@@ -1,14 +1,13 @@
-// backend/index.js
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const http = require('http');
+const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const { Server } = require('socket.io');
 
 const io = new Server(server, {
   cors: { origin: "http://localhost:5173", methods: ["GET","POST"] }
@@ -17,7 +16,7 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
-// DATA paths
+// ------------------- DATA -------------------
 const ROOT = path.join(__dirname, '..');
 const DATA_DIR = path.join(ROOT, 'data');
 const VIDEOS_DIR = path.join(DATA_DIR, 'videos');
@@ -25,43 +24,42 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 fs.mkdirSync(VIDEOS_DIR, { recursive: true });
 if (!fs.existsSync(DB_FILE)) {
-  fs.writeFileSync(DB_FILE, JSON.stringify({ videos: [], purchases: [], chats: {} }, null, 2));
+  fs.writeFileSync(DB_FILE, JSON.stringify({ videos: [], chats: {} }, null, 2));
 }
 
-function readDB(){
-  return JSON.parse(fs.readFileSync(DB_FILE,'utf8'));
+function readDB() {
+  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
 }
-function writeDB(obj){
+function writeDB(obj) {
   fs.writeFileSync(DB_FILE, JSON.stringify(obj, null, 2));
 }
 
-// Multer for uploads
+// ------------------- Multer for uploads -------------------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, VIDEOS_DIR),
   filename: (req, file, cb) => {
     const ts = Date.now();
-    const safe = file.originalname.replace(/\s+/g,'_');
+    const safe = file.originalname.replace(/\s+/g, '_');
     cb(null, `${ts}-${safe}`);
   }
 });
 const upload = multer({ storage });
 
-// ---------- REST endpoints ----------
+// ------------------- REST endpoints -------------------
 
-// List videos metadata
+// Get all videos metadata
 app.get('/api/videos', (req, res) => {
   const db = readDB();
   res.json(db.videos);
 });
 
-// Upload endpoint (multipart form: field 'video', field 'title')
+// Upload a video
 app.post('/api/upload', upload.single('video'), (req, res) => {
-  if(!req.file) return res.status(400).send('No file');
+  if (!req.file) return res.status(400).send('No file uploaded');
   const db = readDB();
-  const title = req.body.title || req.file.originalname;
   const video = {
     id: Date.now().toString(),
-    title,
+    title: req.body.title || req.file.originalname,
     filename: req.file.filename,
     originalName: req.file.originalname,
     createdAt: new Date().toISOString()
@@ -71,18 +69,21 @@ app.post('/api/upload', upload.single('video'), (req, res) => {
   res.json(video);
 });
 
-// Serve raw file stream (supports range for seeking)
+// Serve video with range support (required for seeking)
 app.get('/videos/:filename', (req, res) => {
   const filepath = path.join(VIDEOS_DIR, req.params.filename);
-  if(!fs.existsSync(filepath)) return res.status(404).send('Not found');
+  if (!fs.existsSync(filepath)) return res.status(404).send('Video not found');
+
   const stat = fs.statSync(filepath);
   const fileSize = stat.size;
   const range = req.headers.range;
-  if(range){
+
+  if (range) {
     const parts = range.replace(/bytes=/, "").split("-");
     const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize-1;
-    const chunkSize = (end - start) + 1;
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    const chunkSize = end - start + 1;
+
     const file = fs.createReadStream(filepath, { start, end });
     const head = {
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
@@ -102,19 +103,10 @@ app.get('/videos/:filename', (req, res) => {
 app.get('/api/chats/:videoId', (req, res) => {
   const videoId = req.params.videoId;
   const db = readDB();
-  const chats = db.chats[videoId] || [];
-  res.json(chats);
+  res.json(db.chats[videoId] || []);
 });
 
-// ---------- Socket.IO real-time chat ----------
-
-/*
-Event format:
-- join: { room } where room = `video_<videoId>`
-- chat-message: { room, from, message } (server will broadcast to room and persist)
-- server emits 'chat-message' to room with payload { from, message, at }
-*/
-
+// ------------------- Socket.IO -------------------
 io.on('connection', (socket) => {
   console.log('socket connected', socket.id);
 
@@ -123,29 +115,20 @@ io.on('connection', (socket) => {
     console.log(`${socket.id} joined ${room}`);
   });
 
-  socket.on('chat-message', (payload) => {
-    // payload: { room, from, message }
-    const { room, from, message } = payload;
+  socket.on('chat-message', ({ room, from, message }) => {
     const at = new Date().toISOString();
-
-    // Broadcast to room
     io.to(room).emit('chat-message', { from, message, at });
 
-    // Persist to db.json under db.chats[videoId]
-    // room is like "video_<videoId>"
-    const parts = room.split('video_');
-    const videoId = parts[1] || room;
+    const videoId = room.split('video_')[1] || room;
     const db = readDB();
     db.chats[videoId] = db.chats[videoId] || [];
     db.chats[videoId].push({ from, message, at });
     writeDB(db);
   });
 
-  socket.on('disconnect', () => {
-    console.log('socket disconnected', socket.id);
-  });
+  socket.on('disconnect', () => console.log('socket disconnected', socket.id));
 });
 
-// Run server
-const PORT = process.env.PORT || 5000;
+// ------------------- Start server -------------------
+const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
