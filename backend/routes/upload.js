@@ -2,15 +2,14 @@ const express = require("express");
 const multer = require("multer");
 const AWS = require("aws-sdk");
 require("dotenv").config();
-const router = express.Router();
 
-AWS.config.update({
+const router = express.Router();
+const s3 = new AWS.S3({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   region: process.env.AWS_REGION,
 });
 
-const s3 = new AWS.S3();
 const upload = multer({ storage: multer.memoryStorage() });
 
 router.post("/", upload.single("video"), async (req, res) => {
@@ -21,6 +20,7 @@ router.post("/", upload.single("video"), async (req, res) => {
       Body: req.file.buffer,
       ContentType: req.file.mimetype,
     };
+
     const data = await s3.upload(params).promise();
     res.json({ url: data.Location });
   } catch (err) {

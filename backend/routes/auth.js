@@ -1,54 +1,45 @@
 const express = require("express");
-const { generators } = require("openid-client");
-const { client } = require("../config/cognito");
-
 const router = express.Router();
+const User = require("../models/User");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
-// Login route
-router.get("/login", (req, res) => {
-  if (!client) return res.status(500).send("Cognito client not initialized");
-  
-  const nonce = generators.nonce();
-  const state = generators.state();
+// Signup
+router.post("/signup", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: "Email and password required" });
 
-  req.session.nonce = nonce;
-  req.session.state = state;
-
-  const authUrl = client.authorizationUrl({
-    scope: "email openid phone",
-    state: state,
-    nonce: nonce,
-  });
-
-  res.redirect(authUrl);
-});
-
-// Callback route
-router.get("/callback", async (req, res) => {
   try {
-    const params = client.callbackParams(req);
-    const tokenSet = await client.callback(
-      process.env.COGNITO_REDIRECT_URI,
-      params,
-      {
-        nonce: req.session.nonce,
-        state: req.session.state,
-      }
-    );
-    const userInfo = await client.userinfo(tokenSet.access_token);
-    req.session.userInfo = userInfo;
-    res.redirect("/");
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return res.status(400).json({ error: "User already exists" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = new User({ email, password: hashedPassword });
+    await user.save();
+
+    res.json({ message: "User registered successfully", user: user.email });
   } catch (err) {
-    console.error("Callback error:", err);
-    res.redirect("/");
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Logout route
-router.get("/logout", (req, res) => {
-  req.session.destroy();
-  const logoutUrl = `${process.env.COGNITO_DOMAIN}/logout?client_id=${process.env.COGNITO_APP_CLIENT_ID}&logout_uri=${process.env.COGNITO_LOGOUT_URI}`;
-  res.redirect(logoutUrl);
+// Login
+router.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ error: "User not found" });
+
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) return res.status(400).json({ error: "Invalid password" });
+
+    const token = jwt.sign({ id: user._id, email: user.email }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    res.json({ message: "Login successful", token });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
