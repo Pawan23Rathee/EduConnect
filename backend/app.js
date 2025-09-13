@@ -6,6 +6,7 @@ require("dotenv").config();
 
 const authRoutes = require("./routes/auth");
 const uploadRoutes = require("./routes/upload");
+const interactionsRoutes = require("./routes/interactions");
 
 const app = express();
 const port = 4000;
@@ -34,6 +35,7 @@ app.use(
 // Routes
 app.use("/auth", authRoutes);
 app.use("/upload", uploadRoutes);
+app.use("/interactions", interactionsRoutes);
 
 // MongoDB Connection
 mongoose

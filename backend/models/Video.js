@@ -1,10 +1,14 @@
 const mongoose = require("mongoose");
 
-const videoSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  description: String,
-  s3Url: { type: String, required: true },
-  uploader: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-});
+const videoSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true },
+    description: { type: String },
+    s3Url: { type: String, required: true }, // ✅ match with upload route
+    uploader: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    views: { type: Number, default: 0 }
+  },
+  { timestamps: true }
+);
 
-module.exports = mongoose.models.Video || mongoose.model("Video", videoSchema);
+module.exports = mongoose.model("Video", videoSchema);
