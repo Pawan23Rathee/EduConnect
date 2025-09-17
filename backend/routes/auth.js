@@ -6,7 +6,7 @@ const jwt = require("jsonwebtoken");
 
 // Signup
 router.post("/signup", async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, name } = req.body; // include name if you want
   if (!email || !password) return res.status(400).json({ error: "Email and password required" });
 
   try {
@@ -14,10 +14,17 @@ router.post("/signup", async (req, res) => {
     if (existingUser) return res.status(400).json({ error: "User already exists" });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ email, password: hashedPassword });
+    const user = new User({ email, password: hashedPassword, name });
     await user.save();
 
-    res.json({ message: "User registered successfully", user: user.email });
+    // ✅ Create token after signup
+    const token = jwt.sign(
+      { id: user._id, email: user.email, name: user.name },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    res.json({ message: "User registered successfully", user: { email: user.email, name: user.name }, token });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -36,12 +43,12 @@ router.post("/login", async (req, res) => {
     if (!validPassword) return res.status(400).json({ error: "Invalid password" });
 
     const token = jwt.sign(
-      { id: user._id, email: user.email },
+      { id: user._id, email: user.email, name: user.name },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
 
-    res.json({ message: "Login successful", token });
+    res.json({ message: "Login successful", user: { email: user.email, name: user.name }, token });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

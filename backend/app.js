@@ -7,6 +7,7 @@ require("dotenv").config();
 const authRoutes = require("./routes/auth");
 const uploadRoutes = require("./routes/upload");
 const interactionsRoutes = require("./routes/interactions");
+const videoRoutes = require("./routes/video"); 
 
 const app = express();
 const port = 4000;
@@ -15,10 +16,10 @@ const port = 4000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// CORS for frontend running on localhost:5500
+// CORS for frontend
 app.use(
   cors({
-    origin: "http://localhost:5500",
+    origin: "http://localhost:5176",
     credentials: true,
   })
 );
@@ -36,6 +37,7 @@ app.use(
 app.use("/auth", authRoutes);
 app.use("/upload", uploadRoutes);
 app.use("/interactions", interactionsRoutes);
+app.use("/api/videos", videoRoutes); // <- added
 
 // MongoDB Connection
 mongoose
